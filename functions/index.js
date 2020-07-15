@@ -3,7 +3,7 @@ const app = require("express")();
 const  FBAuth = require("./util/fbAuth");
 
 const { getAllScreams, postOneScream } = require("./handlers/screams");
-const { signup, login, uploadImage } = require("./handlers/users");
+const { signup, login, uploadImage , addUserDetails, getAuthenticatedUserDetails} = require("./handlers/users");
 
 //get Screams routes.
 app.get("/screams", getAllScreams);
@@ -18,5 +18,9 @@ app.post("/signup", signup);
 app.post("/login", login);
 //upload images route
 app.post('/users/image', FBAuth ,uploadImage);
+//add and get user profile details route.
+app.post('/user', FBAuth, addUserDetails);
+app.get('/user', FBAuth, getAuthenticatedUserDetails);
+
 
 exports.api = functions.https.onRequest(app);

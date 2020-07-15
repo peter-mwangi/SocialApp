@@ -1,7 +1,11 @@
 const { admin, db } = require("../util/admin");
 
 const firebaseConfig = require("../util/firebaseConfig");
-const { validateSignupData, validateLoginData } = require("../util/validaters");
+const {
+  validateSignupData,
+  validateLoginData,
+  reduceUserDetails,
+} = require("../util/validaters");
 
 const firebase = require("firebase");
 firebase.initializeApp(firebaseConfig);
@@ -21,7 +25,7 @@ exports.signup = (req, res) => {
     return res.status(400).json({ errors });
   }
 
-  const noImg = 'blank-profile-picture.png';
+  const noImg = "blank-profile-picture.png";
 
   let token, userId;
 
@@ -97,59 +101,104 @@ exports.login = (req, res) => {
       }
     });
 };
+//Add user details
+exports.addUserDetails = (req, res) => {
+  let userDetails = reduceUserDetails(req.body);
 
-exports.uploadImage = (req, res) =>{
-  const BusBoy = require('busboy');
-  const path = require('path');
-  const os = require('os');
-  const fs = require('fs');
+  db.doc(`/users/${req.user.handle}`)
+    .update(userDetails)
+    .then(() => {
+      return res.json({ message: "User Details updated successfully" });
+    })
+    .catch((err) => {
+      console.error(err);
+      return res.status(500).json({ error: err.code });
+    });
+};
+//Getting an authenticated user(own) details
 
-  const busboy = new BusBoy({ headers: req.headers});
-  let imageFileName; 
+exports.getAuthenticatedUserDetails = (req, res) => {
+  let userData = {};
+
+  db.doc(`/users/${req.user.handle}`)
+    .get()
+    .then((doc) => {
+      if (doc.exists) {
+        userData.credentials = doc.data();
+        return db
+          .collection("likes")
+          .where("userHandle", "==", req.user.handle)
+          .get();
+      }
+    })
+    .then((data) => {
+      userData.likes = [];
+      data.forEach((doc) => {
+        userData.likes.push(doc.data());
+      });
+      return res.json(userData);
+    })
+    .catch((err) => {
+      console.error(err);
+      return res.status(500).json({ error: err.code });
+    });
+};
+
+//uploading profile image
+exports.uploadImage = (req, res) => {
+  const BusBoy = require("busboy");
+  const path = require("path");
+  const os = require("os");
+  const fs = require("fs");
+
+  const busboy = new BusBoy({ headers: req.headers });
+  let imageFileName;
   let imageToBeUploaded = {};
 
-  busboy.on('file', (fieldname, file, filename, encoding, mimetype) =>{
-
-    if(mimetype !== 'image/jpeg'&& mimetype !== 'image/png')
-    {
-      return res.status(400).json({error: 'Wrong file type selected'});
+  busboy.on("file", (fieldname, file, filename, encoding, mimetype) => {
+    if (mimetype !== "image/jpeg" && mimetype !== "image/png") {
+      return res.status(400).json({ error: "Wrong file type selected" });
     }
     console.log(fieldname);
     console.log(filename);
     console.log(mimetype);
     //Getting image extension e.g My.image.png => i.e getting .png
 
-    const imageExtension = filename.split('.')[filename.split('.').length -1];
+    const imageExtension = filename.split(".")[filename.split(".").length - 1];
 
     //Giving the image a random name e.g 123894239938237.png
-    imageFileName = `${Math.round(Math.random() * 100000000000)}.${imageExtension}`;
-    const filePath =  path.join(os.tmpdir(), imageFileName);
+    imageFileName = `${Math.round(
+      Math.random() * 100000000000
+    )}.${imageExtension}`;
+    const filePath = path.join(os.tmpdir(), imageFileName);
 
-    imageToBeUploaded = {filePath, mimetype};
-    file.pipe(fs.createWriteStream(filePath)); 
+    imageToBeUploaded = { filePath, mimetype };
+    file.pipe(fs.createWriteStream(filePath));
   });
 
-  busboy.on('finish', () =>{
-
-    admin.storage().bucket().upload(imageToBeUploaded.filePath, {
-      resumable: false,
-      metadata: {
+  busboy.on("finish", () => {
+    admin
+      .storage()
+      .bucket()
+      .upload(imageToBeUploaded.filePath, {
+        resumable: false,
         metadata: {
-          contentType: imageToBeUploaded.mimetype
-        }
-      }
-    })
-    .then(() =>{
-      const imageUrl = `https://firebasestorage.googleapis.com/v0/b/${firebaseConfig.storageBucket}/o/${imageFileName}?alt=media`;
-      db.doc(`/users/${req.user.handle}`).update({imageUrl});
-    })
-    .then( () =>{
-      return res.json({message: 'Image uploaded successfully'});
-    })
-    .catch(err =>{
-      console.error(err);
-      return res.status(500).json({error: err.code});
-    })
+          metadata: {
+            contentType: imageToBeUploaded.mimetype,
+          },
+        },
+      })
+      .then(() => {
+        const imageUrl = `https://firebasestorage.googleapis.com/v0/b/${firebaseConfig.storageBucket}/o/${imageFileName}?alt=media`;
+        db.doc(`/users/${req.user.handle}`).update({ imageUrl });
+      })
+      .then(() => {
+        return res.json({ message: "Image uploaded successfully" });
+      })
+      .catch((err) => {
+        console.error(err);
+        return res.status(500).json({ error: err.code });
+      });
   });
 
   busboy.end(req.rawBody);
